@@ -37,7 +37,7 @@ func SetUpSyncServer() {
 func handleSyncConnection(conn net.Conn, conClients *int) {
 
 	for {
-		cmd, err := readCommand(conn)
+		cmd, err, _ := readCommand(conn)
 
 		if err != nil {
 			*conClients--
@@ -45,14 +45,14 @@ func handleSyncConnection(conn net.Conn, conClients *int) {
 			if err == io.EOF {
 				break
 			}
-			log.Fatal(err.Error())
+			log.Println(err.Error())
 		}
 
 		respond(cmd, conn)
 	}
 }
 
-func respond(cmd *core.RedisCmd, conn net.Conn) {
+func respond(cmd *core.RedisCmd, conn io.ReadWriter) {
 	log.Print("Command : ", string(cmd.Cmd))
 	log.Print("Args : ", strings.Join(cmd.Args, ","))
 
@@ -63,30 +63,30 @@ func respond(cmd *core.RedisCmd, conn net.Conn) {
 	}
 }
 
-func respondError(err error, conn net.Conn) {
+func respondError(err error, conn io.ReadWriter) {
 	_, err = conn.Write([]byte(fmt.Sprintf("-%s\r\n", err.Error())))
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err.Error())
 	}
 }
 
-func readCommand(conn net.Conn) (*core.RedisCmd, error) {
+func readCommand(conn io.ReadWriter) (*core.RedisCmd, error, int) {
 
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 
 	if err != nil {
-		return nil, err
+		return nil, err, 0
 	}
 
 	tokens, err := core.DecodeArrayString(buffer[:n])
 
 	if err != nil {
-		return nil, err
+		return nil, err, 0
 	}
 
 	return &core.RedisCmd{
 		Cmd:  strings.ToUpper(tokens[0]),
 		Args: tokens[1:],
-	}, nil
+	}, nil, n
 }

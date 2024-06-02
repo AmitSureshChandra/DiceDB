@@ -2,6 +2,7 @@ package server
 
 import (
 	"dicedb/config"
+	"dicedb/core"
 	"io"
 	"log"
 	"net"
@@ -36,14 +37,15 @@ func RunAsyncServer() error {
 		Port: config.Port,
 		Addr: [4]byte{ip[0], ip[1], ip[2], ip[3]},
 	}
+	// *2\r\n+PING\r\n+PONG\r\n
 
 	if err := syscall.Bind(fd, &add); err != nil {
-		log.Fatal(err)
+		log.Println(err.Error())
 		return err
 	}
 
 	if err := syscall.Listen(fd, syscall.SOMAXCONN); err != nil {
-		log.Fatal(err)
+		log.Println(err.Error())
 		return err
 	}
 
@@ -59,8 +61,6 @@ func RunAsyncServer() error {
 			return err
 		}
 	}
-
-	return nil
 }
 
 func readWrite() error {
@@ -81,7 +81,7 @@ func acceptConn(fd int) error {
 			//time.Sleep(100 * time.Millisecond)
 			return nil
 		}
-		log.Fatal(err)
+		log.Println(err.Error())
 		return err
 	}
 
@@ -100,7 +100,11 @@ func acceptConn(fd int) error {
 func handle(nfd int) error {
 	buffer := make([]byte, 1024)
 
-	n, err := syscall.Read(nfd, buffer)
+	//n, err := syscall.Read(nfd, buffer)
+
+	fdCmd := core.FDComm{Fd: nfd}
+
+	cmd, err, n := readCommand(fdCmd)
 
 	if err != nil {
 		// if fd is not ready to read
@@ -113,7 +117,7 @@ func handle(nfd int) error {
 		if err == io.EOF {
 			closeFDConn(nfd)
 		}
-		log.Fatal(err)
+		log.Println(err.Error())
 		return err
 	} else {
 		if n == 0 { // means connection broken from terminal
@@ -126,6 +130,7 @@ func handle(nfd int) error {
 	// write if data available in buffer
 	if n > 0 {
 		_, err = syscall.Write(nfd, buffer[:n])
+
 		if err != nil {
 			if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
 				//time.Sleep(100 * time.Millisecond)
@@ -134,6 +139,7 @@ func handle(nfd int) error {
 			return err
 		} else {
 			println("writing on", nfd, "data :", string(buffer[:n]))
+			respond(cmd, fdCmd)
 		}
 	}
 	return nil

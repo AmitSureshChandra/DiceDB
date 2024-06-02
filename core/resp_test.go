@@ -42,7 +42,7 @@ func TestDecode(t *testing.T) {
 		val, _, err := decodeOne([]byte(k))
 
 		if err != nil {
-			log.Fatal(err.Error())
+			log.Println(err.Error())
 		}
 
 		array := val.([]interface{})
