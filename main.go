@@ -8,8 +8,10 @@ import (
 
 func main() {
 	setUpConfig()
-
-	server.SetUpSyncServer()
+	err := server.RunAsyncServer()
+	if err != nil {
+		panic(err.Error())
+	}
 }
 
 func setUpConfig() {
