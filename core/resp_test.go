@@ -78,4 +78,22 @@ func TestDecodeArrayString(t *testing.T) {
 			t.Fail()
 		}
 	}
+
+	given, err = DecodeArrayString([]byte("*2\r\n+PING\r\n+hi\r\n"))
+
+	expected = []string{
+		"PING",
+		"hi",
+	}
+
+	if err != nil {
+		fmt.Println(err.Error())
+		t.Fail()
+	}
+
+	for i := range given {
+		if expected[i] != given[i] {
+			t.Fail()
+		}
+	}
 }

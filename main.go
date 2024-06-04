@@ -4,13 +4,14 @@ import (
 	"dicedb/config"
 	"dicedb/server"
 	"flag"
+	"log"
 )
 
 func main() {
 	setUpConfig()
 	err := server.RunAsyncServer()
 	if err != nil {
-		panic(err.Error())
+		log.Print(err.Error())
 	}
 }
 

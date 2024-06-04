@@ -53,7 +53,7 @@ func handleSyncConnection(conn net.Conn, conClients *int) {
 }
 
 func respond(cmd *core.RedisCmd, conn io.ReadWriter) {
-	log.Print("Command : ", string(cmd.Cmd))
+	log.Print("Command : ", cmd.Cmd)
 	log.Print("Args : ", strings.Join(cmd.Args, ","))
 
 	err := core.EvalAndRespond(cmd, conn)

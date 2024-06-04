@@ -3,153 +3,119 @@ package server
 import (
 	"dicedb/config"
 	"dicedb/core"
-	"io"
+	"fmt"
+	"golang.org/x/sys/unix"
 	"log"
 	"net"
+	"strconv"
 	"syscall"
 )
 
-var conClients = make([]int, 0)
+var conClients = 0
 
 func RunAsyncServer() error {
-	log.Println("starting an asynchronous TCP server on", config.Host, config.Port)
 
-	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	listen, err := net.Listen("tcp", config.Host+":"+strconv.Itoa(config.Port))
+	if err != nil {
+		panic(err.Error())
+	}
+
+	defer listen.Close()
+
+	epollFD, err := core.CreateEpoll()
 
 	if err != nil {
 		return err
 	}
 
-	defer func(fd int) {
-		err := syscall.Close(fd)
-		if err != nil {
-			panic(err.Error())
-		}
-	}(fd)
+	defer syscall.Close(epollFD)
 
-	if err := syscall.SetNonblock(fd, true); err != nil {
+	f, err := listen.(*net.TCPListener).File()
+
+	if err != nil {
 		return err
 	}
 
-	ip := net.ParseIP(config.Host).To4()
+	listenerFD := f.Fd()
 
-	add := syscall.SockaddrInet4{
-		Port: config.Port,
-		Addr: [4]byte{ip[0], ip[1], ip[2], ip[3]},
+	if err := syscall.SetNonblock(int(listenerFD), true); err != nil {
+		println(err.Error())
 	}
-	// *2\r\n+PING\r\n+PONG\r\n
 
-	if err := syscall.Bind(fd, &add); err != nil {
-		log.Println(err.Error())
+	if err := core.AddToPoll(epollFD, int(listenerFD)); err != nil {
 		return err
 	}
 
-	if err := syscall.Listen(fd, syscall.SOMAXCONN); err != nil {
-		log.Println(err.Error())
-		return err
-	}
+	fmt.Println("Server is listening on 127.0.0.1:8080")
 
 	for {
+		events, err := core.WailForEvents(epollFD)
 
-		err := acceptConn(fd)
 		if err != nil {
 			return err
 		}
 
-		err = readWrite()
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func readWrite() error {
-	for i := 0; i < len(conClients); i++ {
-		err := handle(conClients[i])
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func acceptConn(fd int) error {
-	nfd, _, err := syscall.Accept(fd)
-
-	if err != nil {
-		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
-			//time.Sleep(100 * time.Millisecond)
-			return nil
-		}
-		log.Println(err.Error())
-		return err
-	}
-
-	// make non-blocking
-	if err := syscall.SetNonblock(nfd, true); err != nil {
-		return err
-	}
-
-	// store fd to further read & write
-	conClients = append(conClients, nfd)
-
-	println("new connection established ", conClients)
-	return nil
-}
-
-func handle(nfd int) error {
-	buffer := make([]byte, 1024)
-
-	//n, err := syscall.Read(nfd, buffer)
-
-	fdCmd := core.FDComm{Fd: nfd}
-
-	cmd, err, n := readCommand(fdCmd)
-
-	if err != nil {
-		// if fd is not ready to read
-		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
-			//time.Sleep(100 * time.Millisecond)
-			return nil
-		}
-
-		// if connection is closed
-		if err == io.EOF {
-			closeFDConn(nfd)
-		}
-		log.Println(err.Error())
-		return err
-	} else {
-		if n == 0 { // means connection broken from terminal
-			closeFDConn(nfd)
-		} else {
-			println("reading on", nfd, "data :", string(buffer[:n]))
-		}
-	}
-
-	// write if data available in buffer
-	if n > 0 {
-		_, err = syscall.Write(nfd, buffer[:n])
-
-		if err != nil {
-			if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
-				//time.Sleep(100 * time.Millisecond)
-				return nil
+		for _, event := range events {
+			err := handleEvent(event, epollFD, listenerFD, listen)
+			if err != nil {
+				log.Println("error handling req")
+				log.Println(err.Error())
 			}
-			return err
-		} else {
-			println("writing on", nfd, "data :", string(buffer[:n]))
-			respond(cmd, fdCmd)
 		}
 	}
+}
+
+func handleEvent(event unix.EpollEvent, epollFD int, listenerFD uintptr, listen net.Listener) error {
+
+	// listening for read events
+	if event.Fd != int32(listenerFD) {
+		err := handleConn(int(event.Fd))
+		if err == nil {
+			return nil
+		}
+		log.Println(err.Error())
+		conClients--
+		log.Println("client disconnected ", conClients)
+		err = core.RemoveFromPoll(epollFD, int(event.Fd))
+		if err != nil {
+			log.Println(err.Error())
+		}
+		return nil
+	}
+
+	// listening for new connection
+	conn, err := listen.Accept()
+
+	if err != nil {
+		return err
+	}
+
+	f, err := conn.(*net.TCPConn).File()
+
+	if err != nil {
+		return err
+	}
+	connFD := int(f.Fd())
+
+	if err := syscall.SetNonblock(connFD, true); err != nil {
+		println(err.Error())
+	}
+
+	if err := core.AddToPoll(epollFD, connFD); err != nil {
+		conn.Close()
+		return err
+	}
+	conClients++
+	log.Println("client connected ", conClients)
 	return nil
 }
 
-func closeFDConn(nfd int) {
-	for i := 0; i < len(conClients); i++ {
-		if conClients[i] == nfd {
-			conClients = append(conClients[:i], conClients[i+1:]...)
-			log.Print(nfd, " connection closed")
-		}
+func handleConn(nfd int) error {
+	fdCmd := core.FDComm{Fd: nfd}
+	cmd, err, _ := readCommand(fdCmd)
+	if err != nil {
+		return err
 	}
+	respond(cmd, fdCmd)
+	return nil
 }
