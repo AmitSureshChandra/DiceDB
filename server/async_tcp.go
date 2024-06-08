@@ -9,9 +9,13 @@ import (
 	"net"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 var conClients = 0
+
+var cronFreq = 1 * time.Second
+var lastCronExcTime = time.Now()
 
 func RunAsyncServer() error {
 
@@ -49,6 +53,13 @@ func RunAsyncServer() error {
 	fmt.Println("Server is listening on 127.0.0.1:8080")
 
 	for {
+
+		// delete the expired keys
+		if time.Now().After(lastCronExcTime.Add(cronFreq)) {
+			core.DeleteExpireKeys()
+			lastCronExcTime = time.Now()
+		}
+
 		events, err := core.WailForEvents(epollFD)
 
 		if err != nil {

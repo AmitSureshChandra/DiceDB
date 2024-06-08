@@ -37,3 +37,11 @@ func Get(k string) *Obj {
 	}
 	return nil
 }
+
+func Del(key string) bool {
+	if _, ok := store[key]; ok {
+		delete(store, key)
+		return true
+	}
+	return false
+}

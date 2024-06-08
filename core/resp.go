@@ -112,7 +112,7 @@ func Encode(value interface{}, isSimple bool) []byte {
 		} else {
 			return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v))
 		}
-	case int64:
+	case int, int8, int16, int32, int64:
 		return []byte(fmt.Sprintf(":%d\r\n", v))
 	}
 	return RespNil

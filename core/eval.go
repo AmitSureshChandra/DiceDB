@@ -98,11 +98,11 @@ func EvalSet(args []string, conn io.ReadWriter) error {
 			}
 			exDurationMs2, err := strconv.ParseInt(args[i], 10, 64)
 
+			if err != nil {
+				return errors.New("(Error) ERR value is not integer of out of range")
+			}
 			exDurationMs = exDurationMs2
 
-			if err != nil {
-				return errors.New("(error) ERR syntax error")
-			}
 		case "ex", "EX":
 			i++
 			if i == len(args) {
@@ -136,7 +136,54 @@ func EvalAndRespond(cmd *RedisCmd, conn io.ReadWriter) error {
 		return EvalSet(cmd.Args, conn)
 	case "TTL":
 		return EvalTTL(cmd.Args, conn)
+	case "DEL":
+		return EvalDel(cmd.Args, conn)
+	case "EXPIRE":
+		return EvalExp(cmd.Args, conn)
 	default:
 		return EvalPING(cmd.Args, conn)
 	}
+}
+
+func EvalExp(args []string, conn io.ReadWriter) error {
+	if len(args) != 2 {
+		return errors.New("(error) ERR wrong no of arguments for `EXP` command")
+	}
+
+	key := args[0]
+	// check key in map
+
+	exDurationSec, err := strconv.ParseInt(args[1], 10, 64)
+
+	if err != nil {
+		return errors.New("(Error) ERR value is not integer of out of range")
+	}
+
+	obj := Get(key)
+
+	// if obj not exists then return code 0
+	if obj == nil {
+		conn.Write([]byte(":0\r\n"))
+		return nil
+	}
+
+	obj.ExpiredAt = time.Now().UnixMilli() + exDurationSec*1000
+
+	// return 1 if timeout is set
+	conn.Write([]byte(":1\r\n"))
+
+	return nil
+}
+
+func EvalDel(args []string, conn io.ReadWriter) error {
+	deletedCnt := 0
+
+	for _, key := range args {
+		if ok := Del(key); ok {
+			deletedCnt++
+		}
+	}
+
+	conn.Write(Encode(deletedCnt, false))
+	return nil
 }
