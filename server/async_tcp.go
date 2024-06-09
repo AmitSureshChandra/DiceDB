@@ -123,10 +123,10 @@ func handleEvent(event unix.EpollEvent, epollFD int, listenerFD uintptr, listen 
 
 func handleConn(nfd int) error {
 	fdCmd := core.FDComm{Fd: nfd}
-	cmd, err, _ := readCommand(fdCmd)
+	cmds, err := readCommand(fdCmd)
 	if err != nil {
 		return err
 	}
-	respond(cmd, fdCmd)
+	respond(cmds, fdCmd)
 	return nil
 }
