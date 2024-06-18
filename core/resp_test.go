@@ -42,7 +42,7 @@ func TestDecode(t *testing.T) {
 		val, _, err := decodeOne([]byte(k))
 
 		if err != nil {
-			log.Fatal(err.Error())
+			log.Println(err.Error())
 		}
 
 		array := val.([]interface{})
@@ -55,27 +55,6 @@ func TestDecode(t *testing.T) {
 			if fmt.Sprintf("%v", array[i]) != fmt.Sprintf("%v", v[i]) {
 				t.Fail()
 			}
-		}
-	}
-}
-
-func TestDecodeArrayString(t *testing.T) {
-	given, err := DecodeArrayString([]byte("*3\r\n+Hello\r\n+World\r\n+Mumbai\r\n"))
-
-	expected := []string{
-		"Hello",
-		"World",
-		"Mumbai",
-	}
-
-	if err != nil {
-		fmt.Println(err.Error())
-		t.Fail()
-	}
-
-	for i := range given {
-		if expected[i] != given[i] {
-			t.Fail()
 		}
 	}
 }

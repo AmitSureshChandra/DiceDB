@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 )
@@ -75,33 +76,23 @@ func decodeString(msg []byte) (interface{}, int, error) {
 	return string(msg[1:i]), i + 2, nil
 }
 
-func DecodeArrayString(msg []byte) ([]string, error) {
-	value, err := decode(msg)
-
-	if err != nil {
-		return nil, err
-	}
-
-	value2 := value.([]interface{})
-
-	res := make([]string, len(value2))
-
-	for index, val := range value2 {
-		res[index] = val.(string)
-	}
-
-	return res, nil
-}
-
-func decode(msg []byte) (interface{}, error) {
+func Decode(msg []byte) ([]interface{}, error) {
 
 	if len(msg) == 0 {
 		return nil, errors.New("no data")
 	}
 
-	value, _, err := decodeOne(msg)
-
-	return value, err
+	values := make([]interface{}, 0)
+	index := 0
+	for index < len(msg) {
+		value, delta, err := decodeOne(msg)
+		index += delta
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
 }
 
 func Encode(value interface{}, isSimple bool) []byte {
@@ -110,8 +101,30 @@ func Encode(value interface{}, isSimple bool) []byte {
 		if isSimple {
 			return []byte(fmt.Sprintf("+%s\r\n", v))
 		} else {
-			return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v))
+			return EncodeString(v)
 		}
+	case []string:
+		return encodeStringArray(v)
+	case int, int8, int16, int32, int64:
+		return []byte(fmt.Sprintf(":%d\r\n", v))
+	case error:
+		return []byte(fmt.Sprintf("-%s\r\n", v))
+	default:
+		return RespNil
 	}
-	return []byte("")
+}
+
+func encodeStringArray(arr []string) []byte {
+	b := make([]byte, 0)
+	buf := bytes.NewBuffer(b)
+
+	for _, str := range arr {
+		buf.Write(EncodeString(str))
+	}
+
+	return buf.Bytes()
+}
+
+func EncodeString(v string) []byte {
+	return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v))
 }
